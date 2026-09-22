@@ -4,6 +4,15 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: '手动运行时创建的 Release Tag（留空则只构建不发布）'
+        required: false
+        default: ''
+      release_name:
+        description: 'Release 标题（留空则使用 Tag 名）'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -46,7 +55,9 @@ jobs:
           if-no-files-found: error
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     needs: build
     runs-on: ubuntu-24.04
     permissions:
@@ -58,9 +69,22 @@ jobs:
           name: an758x-stock2ubi-aarch64
           path: release
 
+      - name: Resolve tag name
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+            echo "title=${{ inputs.release_name || inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "title=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
-          gh release create "$GITHUB_REF_NAME" release/an758x-stock2ubi
+          gh release create "${{ steps.meta.outputs.tag }}"
+          release/an758x-stock2ubi
+          --title "${{ steps.meta.outputs.title }}"
           --generate-notes --repo "$GITHUB_REPOSITORY"
